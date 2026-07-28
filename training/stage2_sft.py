@@ -1,209 +1,125 @@
 #!/usr/bin/env python3
-"""
-Nova v12 Training — Stage 2: Multi-Mode Supervised Fine-Tuning
+"""Nova V12 QLoRA SFT on execution-verified atomic patch examples."""
 
-Trains the model on all Nova operating modes using execution-verified
-examples with mode-specific control tokens.
-
-Modes:
-    <|nova_code|>      Code generation (30%)
-    <|nova_fim|>       FIM completion (20%)
-    <|nova_edit|>      Code editing (15%)
-    <|nova_debug|>     Debugging (15%)
-    <|nova_agent|>     Agentic tool use (10%)
-    <|nova_review|>    Code review (5%)
-    <|nova_explain|>   Explanation (5%)
-
-Usage:
-    python stage2_sft.py --base-model /path/to/stage1_output \
-                         --data-dir /path/to/sft_data \
-                         --output-dir /path/to/stage2_output
-"""
+from __future__ import annotations
 
 import argparse
 import json
-import os
-import sys
+import platform
+from datetime import datetime, timezone
 from pathlib import Path
-from datetime import datetime
+
+from nova_v12.constants import SYSTEM_PROMPT
+from nova_v12.dataset import canonical_json, sha256_text, validate_manifest
+from nova_v12.schema import ContractError
 
 
-# System prompt for Nova Code
-NOVA_SYSTEM_PROMPT = (
-    "You are Nova Code, an AI coding assistant by Amaura Labs. "
-    "You help developers write, debug, edit, and understand code. "
-    "You are precise, minimal, and honest about your limitations. "
-    "You produce working code and explain your reasoning clearly."
-)
+def to_conversation(example: dict) -> dict:
+    """Convert a verified record to TRL conversational prompt-completion format."""
+    verification = example.get("verification", {})
+    if verification.get("verified") is not True:
+        raise ContractError("unverified example reached SFT formatter")
+    prompt = example["prompt"]
+    completion = canonical_json(example["response"])
+    return {
+        "prompt": [
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {
+                "role": "user",
+                "content": f"<|nova_patch|>\n{canonical_json(prompt)}",
+            },
+        ],
+        "completion": [{"role": "assistant", "content": completion}],
+    }
 
 
-def format_sft_example(example: dict, tokenizer) -> dict:
-    """Format a training example into a chat template."""
-    mode = example.get("mode", "<|nova_code|>")
-    instruction = example.get("instruction", "")
-    input_text = example.get("input", "")
-    output_text = example.get("output", "")
-
-    # Build messages
-    messages = [
-        {"role": "system", "content": NOVA_SYSTEM_PROMPT},
-    ]
-
-    # User message
-    user_content = f"{mode}\n{instruction}"
-    if input_text:
-        user_content += f"\n\n{input_text}"
-    messages.append({"role": "user", "content": user_content})
-
-    # Assistant message
-    messages.append({"role": "assistant", "content": output_text})
-
-    # Apply chat template
-    try:
-        text = tokenizer.apply_chat_template(
-            messages,
-            tokenize=False,
-            add_generation_prompt=False,
-        )
-    except Exception:
-        # Fallback for tokenizers without chat template
-        text = (
-            f"<|im_start|>system\n{NOVA_SYSTEM_PROMPT}<|im_end|>\n"
-            f"<|im_start|>user\n{user_content}<|im_end|>\n"
-            f"<|im_start|>assistant\n{output_text}<|im_end|>"
-        )
-
-    return {"text": text}
-
-
-def main():
-    parser = argparse.ArgumentParser(
-        description="Nova v12 Stage 2: Multi-Mode SFT"
-    )
-    parser.add_argument("--base-model", type=str, required=True,
-                        help="Path to Stage 1 output or foundation model")
-    parser.add_argument("--data-dir", type=str, required=True,
-                        help="Directory containing SFT JSONL data")
-    parser.add_argument("--output-dir", type=str, required=True,
-                        help="Output directory for trained model")
-
-    # Training hyperparameters
-    parser.add_argument("--learning-rate", type=float, default=1e-5)
-    parser.add_argument("--num-epochs", type=int, default=3)
-    parser.add_argument("--batch-size", type=int, default=2)
-    parser.add_argument("--gradient-accumulation", type=int, default=4)
-    parser.add_argument("--max-seq-length", type=int, default=4096)
-
-    # LoRA
-    parser.add_argument("--use-lora", action="store_true", default=True)
-    parser.add_argument("--lora-rank", type=int, default=64)
-    parser.add_argument("--lora-alpha", type=int, default=128)
-
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Nova V12 verified QLoRA SFT")
+    parser.add_argument("--base-model", required=True)
+    parser.add_argument("--revision", required=True)
+    parser.add_argument("--data-dir", type=Path, required=True)
+    parser.add_argument("--output-dir", type=Path, required=True)
+    parser.add_argument("--minimum-verified", type=int, default=100)
+    parser.add_argument("--learning-rate", type=float, default=1e-4)
+    parser.add_argument("--epochs", type=float, default=2.0)
+    parser.add_argument("--batch-size", type=int, default=1)
+    parser.add_argument("--gradient-accumulation", type=int, default=16)
+    parser.add_argument("--max-length", type=int, default=4096)
+    parser.add_argument("--lora-rank", type=int, default=32)
+    parser.add_argument("--lora-alpha", type=int, default=64)
+    parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--resume-from-checkpoint")
     parser.add_argument("--trust-remote-code", action="store_true")
-    parser.add_argument("--bf16", action="store_true", default=True)
-
+    parser.add_argument(
+        "--full-precision",
+        action="store_true",
+        help="Disable 4-bit NF4 loading; intended only for sufficiently large GPUs",
+    )
     args = parser.parse_args()
 
-    output_path = Path(args.output_dir)
-    output_path.mkdir(parents=True, exist_ok=True)
-
-    print("=" * 70)
-    print("NOVA v12 — STAGE 2: MULTI-MODE SFT")
-    print("=" * 70)
-    print(f"Base model: {args.base_model}")
-    print(f"Data:       {args.data_dir}")
-    print(f"Output:     {args.output_dir}")
-    print(f"LR:         {args.learning_rate}")
-    print(f"Epochs:     {args.num_epochs}")
-    print(f"LoRA:       r={args.lora_rank}, α={args.lora_alpha}")
-    print("=" * 70)
+    try:
+        manifest = validate_manifest(
+            args.data_dir,
+            minimum_verified=args.minimum_verified,
+        )
+    except (ContractError, OSError, json.JSONDecodeError) as exc:
+        parser.exit(2, f"data gate failed: {exc}\n")
+    train_path = args.data_dir / "train.jsonl"
+    validation_path = args.data_dir / "validation.jsonl"
+    if not train_path.is_file() or not validation_path.is_file():
+        parser.exit(2, "data gate failed: train and validation shards are required\n")
+    args.output_dir.mkdir(parents=True, exist_ok=True)
 
     try:
         import torch
-        from transformers import (
-            AutoModelForCausalLM,
-            AutoTokenizer,
-            TrainingArguments,
-        )
+        import transformers
+        import trl
         from datasets import load_dataset
-        from trl import SFTTrainer, SFTConfig
-    except ImportError as e:
-        print(f"Missing dependency: {e}")
-        print("Install with: pip install transformers torch datasets trl peft")
-        sys.exit(1)
+        from peft import LoraConfig
+        from transformers import AutoTokenizer, BitsAndBytesConfig
+        from trl import SFTConfig, SFTTrainer
+    except ImportError as exc:
+        parser.exit(2, f"missing training dependency: {exc}\n")
 
-    # Load tokenizer and model
-    print("\nLoading tokenizer and model...")
+    if not torch.cuda.is_available():
+        parser.exit(2, "CUDA GPU required for the production QLoRA recipe\n")
+    use_bf16 = bool(torch.cuda.is_bf16_supported())
+    compute_dtype = torch.bfloat16 if use_bf16 else torch.float16
+    quantization = None
+    if not args.full_precision:
+        quantization = BitsAndBytesConfig(
+            load_in_4bit=True,
+            bnb_4bit_quant_type="nf4",
+            bnb_4bit_use_double_quant=True,
+            bnb_4bit_compute_dtype=compute_dtype,
+        )
+
     tokenizer = AutoTokenizer.from_pretrained(
         args.base_model,
+        revision=args.revision,
         trust_remote_code=args.trust_remote_code,
     )
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
 
-    model = AutoModelForCausalLM.from_pretrained(
-        args.base_model,
-        torch_dtype=torch.bfloat16 if args.bf16 else torch.float16,
-        trust_remote_code=args.trust_remote_code,
-        device_map="auto",
-    )
-
-    # Load and format dataset
-    print(f"\nLoading SFT data from {args.data_dir}...")
-    data_path = Path(args.data_dir)
-    data_files = list(data_path.glob("*.jsonl"))
-
-    dataset = load_dataset(
+    raw = load_dataset(
         "json",
-        data_files=[str(f) for f in data_files],
-        split="train",
+        data_files={"train": str(train_path), "validation": str(validation_path)},
     )
+    columns = raw["train"].column_names
+    formatted = raw.map(to_conversation, remove_columns=columns)
 
-    print(f"Total examples: {len(dataset):,}")
-
-    # Format examples
-    def format_fn(examples):
-        texts = []
-        for i in range(len(examples["instruction"])):
-            example = {
-                key: examples[key][i]
-                for key in examples.keys()
-            }
-            formatted = format_sft_example(example, tokenizer)
-            texts.append(formatted["text"])
-        return {"text": texts}
-
-    formatted_dataset = dataset.map(
-        format_fn,
-        batched=True,
-        remove_columns=dataset.column_names,
+    peft_config = LoraConfig(
+        task_type="CAUSAL_LM",
+        r=args.lora_rank,
+        lora_alpha=args.lora_alpha,
+        lora_dropout=0.05,
+        target_modules="all-linear",
+        bias="none",
     )
-
-    # Split
-    split = formatted_dataset.train_test_split(test_size=0.1, seed=42)
-    train_dataset = split["train"]
-    eval_dataset = split["test"]
-
-    print(f"Train: {len(train_dataset):,} | Eval: {len(eval_dataset):,}")
-
-    # LoRA config
-    peft_config = None
-    if args.use_lora:
-        from peft import LoraConfig, TaskType
-        peft_config = LoraConfig(
-            task_type=TaskType.CAUSAL_LM,
-            r=args.lora_rank,
-            lora_alpha=args.lora_alpha,
-            lora_dropout=0.05,
-            target_modules=["q_proj", "k_proj", "v_proj", "o_proj",
-                            "gate_proj", "up_proj", "down_proj"],
-            bias="none",
-        )
-
-    # Training config
-    sft_config = SFTConfig(
-        output_dir=str(output_path),
-        num_train_epochs=args.num_epochs,
+    training_args = SFTConfig(
+        output_dir=str(args.output_dir),
+        num_train_epochs=args.epochs,
         per_device_train_batch_size=args.batch_size,
         per_device_eval_batch_size=args.batch_size,
         gradient_accumulation_steps=args.gradient_accumulation,
@@ -211,49 +127,64 @@ def main():
         weight_decay=0.01,
         warmup_ratio=0.03,
         lr_scheduler_type="cosine",
-        logging_steps=25,
+        logging_steps=10,
         eval_strategy="steps",
-        eval_steps=250,
+        eval_steps=100,
         save_strategy="steps",
-        save_steps=500,
+        save_steps=100,
         save_total_limit=3,
-        bf16=args.bf16,
+        bf16=use_bf16,
+        fp16=not use_bf16,
+        tf32=True,
         gradient_checkpointing=True,
-        max_seq_length=args.max_seq_length,
-        packing=True,
-        dataset_text_field="text",
+        max_length=args.max_length,
+        completion_only_loss=True,
+        packing=False,
         report_to="none",
+        seed=args.seed,
+        data_seed=args.seed,
+        full_determinism=True,
+        model_init_kwargs={
+            "revision": args.revision,
+            "trust_remote_code": args.trust_remote_code,
+            "dtype": compute_dtype,
+        },
     )
-
-    # Trainer
     trainer = SFTTrainer(
-        model=model,
-        args=sft_config,
-        train_dataset=train_dataset,
-        eval_dataset=eval_dataset,
+        model=args.base_model,
+        args=training_args,
+        train_dataset=formatted["train"],
+        eval_dataset=formatted["validation"],
+        processing_class=tokenizer,
+        quantization_config=quantization,
         peft_config=peft_config,
     )
-
-    # Train
-    print("\nStarting SFT training...")
-    train_result = trainer.train()
-
-    # Save
-    print("\nSaving model...")
+    result = trainer.train(resume_from_checkpoint=args.resume_from_checkpoint)
     trainer.save_model()
-    tokenizer.save_pretrained(output_path)
-
-    # Metrics
-    metrics = train_result.metrics
-    with open(output_path / "sft_metrics.json", "w") as f:
-        json.dump(metrics, f, indent=2)
-
-    print(f"\n{'='*70}")
-    print("STAGE 2 COMPLETE")
-    print(f"{'='*70}")
-    print(f"Model saved to: {output_path}")
-    print(f"Training loss: {metrics.get('train_loss', 'N/A')}")
-    print(f"\nNext: Run evaluation suite")
+    tokenizer.save_pretrained(args.output_dir)
+    run = {
+        "schema_version": "nova.sft-run.v1",
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "base_model": args.base_model,
+        "base_revision": args.revision,
+        "dataset_manifest_sha256": manifest["manifest_sha256"],
+        "verified_examples": manifest["verified_examples"],
+        "precision": "bf16" if use_bf16 else "fp16",
+        "qlora_nf4": not args.full_precision,
+        "seed": args.seed,
+        "metrics": result.metrics,
+        "versions": {
+            "python": platform.python_version(),
+            "torch": torch.__version__,
+            "transformers": transformers.__version__,
+            "trl": trl.__version__,
+        },
+    }
+    run["run_sha256"] = sha256_text(canonical_json(run))
+    (args.output_dir / "nova_sft_run.json").write_text(
+        json.dumps(run, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
 
 
 if __name__ == "__main__":

@@ -1,0 +1,14 @@
+{
+  "candidates": {
+    "qwen2.5-coder-3b": {
+      "hf_id": "Qwen/Qwen2.5-Coder-3B-Instruct",
+      "revision": "REPLACE_WITH_IMMUTABLE_COMMIT_SHA",
+      "licence": "apache-2.0"
+    },
+    "candidate-b": {
+      "hf_id": "REPLACE_WITH_CANDIDATE_MODEL_ID",
+      "revision": "REPLACE_WITH_IMMUTABLE_COMMIT_SHA",
+      "licence": "REPLACE_WITH_VERIFIED_LICENCE"
+    }
+  }
+}

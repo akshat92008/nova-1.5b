@@ -1,0 +1,9 @@
+[run]
+source = nova_v12
+omit =
+    nova_v12/__main__.py
+    nova_v12/cli.py
+
+[report]
+show_missing = true
+skip_covered = false
