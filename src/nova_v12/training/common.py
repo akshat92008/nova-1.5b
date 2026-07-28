@@ -10,7 +10,6 @@ import yaml
 
 from nova_v12.schemas import load_jsonl
 
-
 MODE_TOKENS = ["<|nova_code|>", "<|nova_edit|>", "<|nova_debug|>", "<|nova_agent|>"]
 
 
@@ -118,7 +117,9 @@ def dtype_from_config(config: dict[str, Any]):
     return torch.float32
 
 
-def save_run_metadata(output_dir: str | Path, config: dict[str, Any], extra: dict[str, Any]) -> None:
+def save_run_metadata(
+    output_dir: str | Path, config: dict[str, Any], extra: dict[str, Any]
+) -> None:
     target = Path(output_dir)
     target.mkdir(parents=True, exist_ok=True)
     payload = {"config": config, **extra}

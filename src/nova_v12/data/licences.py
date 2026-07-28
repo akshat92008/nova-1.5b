@@ -3,7 +3,6 @@ from __future__ import annotations
 import re
 from collections.abc import Iterable
 
-
 DEFAULT_ALLOWLIST = {
     "mit",
     "apache-2.0",

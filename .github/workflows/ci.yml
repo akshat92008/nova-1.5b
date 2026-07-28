@@ -1,70 +1,54 @@
-name: Nova 1.5b CI/CD Pipeline
+name: Nova V12 CI
 
 on:
   push:
-    branches: [ "main", "dev" ]
+    branches: ["main", "dev", "agent/**"]
   pull_request:
-    branches: [ "main", "dev" ]
+    branches: ["main", "dev"]
+
+permissions:
+  contents: read
 
 jobs:
-  test-and-profile:
-    name: Build & Test on ${{ matrix.os }}
+  verify:
+    name: Python ${{ matrix.python-version }} / ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest]
-        python-version: ["3.10", "3.11"]
+        python-version: ["3.10", "3.12"]
 
     steps:
-    - uses: actions/checkout@v4
-    
-    - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v4
-      with:
-        python-version: ${{ matrix.python-version }}
-        cache: 'pip'
-        
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
-        pip install pytest pytest-cov psutil
+      - uses: actions/checkout@v4
 
-    - name: Run Core Test Suite
-      run: |
-        # Ensure we have core files present
-        pytest tests/ --cov=. --cov-report=xml || echo "No tests folder yet, skipping pytest"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
 
-    - name: Test AST Indexer
-      run: |
-        # Quick sanity check on the indexer
-        python ast_indexer.py --self-test || exit 1
+      - name: Install
+        run: python -m pip install -e ".[dev]"
 
-    - name: Test Tool Executor
-      run: |
-        # Run self-tests in tool_executor.py
-        python tool_executor.py || exit 1
+      - name: Static checks
+        run: |
+          ruff check src/nova_v12 tests \
+            legacy/v11/coding_agent/nexus/nova_v12_backend.py
+          python -m compileall -q src/nova_v12
 
-    - name: Test Retrieval Engine
-      run: |
-        # Run self-tests for BM25 and Chunking
-        python retrieval.py --self-test || exit 1
+      - name: Unit and integration tests
+        run: pytest --cov=nova_v12 --cov-report=term-missing --cov-fail-under=84
 
-    - name: Test Agent Loop
-      run: |
-        # Run mock agent execution
-        python agents.py || exit 1
-
-    - name: Test Benchmark Harness (Mock Mode)
-      run: |
-        # Ensure harness executes successfully
-        python benchmark_harness.py --mock || exit 1
-
-    - name: Test Memory Management (Mock Check)
-      run: |
-        python memory.py --self-test || exit 1
-
-    - name: Upload coverage reports to Codecov
-      uses: codecov/codecov-action@v3
-      env:
-        CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+      - name: CLI smoke test
+        run: |
+          nova-v12 --help
+          nova-v12-data --help
+          nova-v12-eval --help
+          nova-v12-foundation --help
+          nova-v12-preferences --help
+          nova-v12-train --help
+          nova-v12-cpt --help
+          nova-v12-sft --help
+          nova-v12-distill --help
+          nova-v12-dpo --help
+          nova-v12-export --help

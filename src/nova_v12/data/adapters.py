@@ -28,7 +28,9 @@ def adapt_stack_v1(example: dict[str, Any]) -> CodeRecord:
         repository=str(example.get("repo_name") or example.get("repository_name") or "unknown"),
         revision=str(example.get("hexsha") or example.get("revision") or ""),
         path=str(example.get("path") or ""),
-        licence=_licence_text(example.get("licenses") or example.get("license") or example.get("licence")),
+        licence=_licence_text(
+            example.get("licenses") or example.get("license") or example.get("licence")
+        ),
         language=str(example.get("language") or "unknown").lower(),
         content=str(example.get("content") or ""),
         source_id=str(example.get("max_stars_repo_name") or example.get("hexsha") or ""),

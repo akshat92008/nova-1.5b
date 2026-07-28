@@ -1,81 +1,126 @@
+#!/usr/bin/env python3
+"""Nova V12 DPO on execution-ranked preference pairs."""
+
 from __future__ import annotations
 
 import argparse
+import json
+import platform
+from datetime import datetime, timezone
 from pathlib import Path
 
-from nova_v12.data.validators import validate_dpo_record
-from nova_v12.training.common import dtype_from_config, load_config, load_records, save_run_metadata, set_seed
+from nova_v12.dataset import canonical_json, sha256_text
+from nova_v12.preference import validate_preference_manifest
+from nova_v12.schema import ContractError
 
 
-def train(config_path: str | Path) -> None:
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Nova V12 execution-ranked DPO")
+    parser.add_argument("--sft-adapter", type=Path, required=True)
+    parser.add_argument("--data-dir", type=Path, required=True)
+    parser.add_argument("--output-dir", type=Path, required=True)
+    parser.add_argument("--minimum-pairs", type=int, default=100)
+    parser.add_argument("--learning-rate", type=float, default=1e-5)
+    parser.add_argument("--beta", type=float, default=0.1)
+    parser.add_argument("--epochs", type=float, default=1.0)
+    parser.add_argument("--batch-size", type=int, default=1)
+    parser.add_argument("--gradient-accumulation", type=int, default=16)
+    parser.add_argument("--max-length", type=int, default=4096)
+    parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--resume-from-checkpoint")
+    args = parser.parse_args()
+
     try:
-        from datasets import Dataset
-        from transformers import AutoModelForCausalLM, AutoTokenizer
+        preference = validate_preference_manifest(
+            args.data_dir,
+            minimum_pairs=args.minimum_pairs,
+        )
+    except (ContractError, OSError, json.JSONDecodeError) as exc:
+        parser.exit(2, f"preference data gate failed: {exc}\n")
+    if not (args.sft_adapter / "nova_sft_run.json").is_file():
+        parser.exit(2, "SFT adapter is missing nova_sft_run.json provenance\n")
+    args.output_dir.mkdir(parents=True, exist_ok=True)
+
+    try:
+        import torch
+        import transformers
+        import trl
+        from datasets import load_dataset
+        from peft import AutoPeftModelForCausalLM
+        from transformers import AutoTokenizer
         from trl import DPOConfig, DPOTrainer
     except ImportError as exc:
-        raise RuntimeError("install the train extra") from exc
-    config = load_config(config_path)
-    seed = int(config.get("seed", 42))
-    set_seed(seed)
-    train_records = load_records(config.get("train_files", []))
-    validation_records = load_records(config.get("validation_files", []))
-    for record in train_records + validation_records:
-        report = validate_dpo_record(record)
-        if not report.valid:
-            raise ValueError(f"invalid DPO record {record.get('id')}: {report.errors}")
-    dataset_fields = ("prompt", "chosen", "rejected")
-    train_dataset = Dataset.from_list([{field: item[field] for field in dataset_fields} for item in train_records])
-    eval_dataset = Dataset.from_list([{field: item[field] for field in dataset_fields} for item in validation_records])
-    base_model = str(config["base_model"])
-    tokenizer = AutoTokenizer.from_pretrained(base_model, revision=config.get("revision"), trust_remote_code=bool(config.get("trust_remote_code", False)))
-    if tokenizer.pad_token_id is None:
-        tokenizer.pad_token = tokenizer.eos_token
-    model = AutoModelForCausalLM.from_pretrained(
-        base_model,
-        revision=config.get("revision"),
-        trust_remote_code=bool(config.get("trust_remote_code", False)),
-        torch_dtype=dtype_from_config(config),
-        device_map="auto" if config.get("device_map", "auto") == "auto" else None,
+        parser.exit(2, f"missing training dependency: {exc}\n")
+    if not torch.cuda.is_available():
+        parser.exit(2, "CUDA GPU required for the production DPO recipe\n")
+    use_bf16 = bool(torch.cuda.is_bf16_supported())
+    model = AutoPeftModelForCausalLM.from_pretrained(
+        args.sft_adapter,
+        is_trainable=True,
+        device_map={"": 0},
     )
-    arguments = DPOConfig(
-        output_dir=str(config["output_dir"]),
-        learning_rate=float(config.get("learning_rate", 5e-6)),
-        num_train_epochs=float(config.get("num_train_epochs", 1)),
-        per_device_train_batch_size=int(config.get("per_device_train_batch_size", 1)),
-        per_device_eval_batch_size=int(config.get("per_device_eval_batch_size", 1)),
-        gradient_accumulation_steps=int(config.get("gradient_accumulation_steps", 16)),
-        beta=float(config.get("beta", 0.1)),
-        max_length=int(config.get("max_length", 8192)),
-        max_prompt_length=int(config.get("max_prompt_length", 4096)),
-        bf16=bool(config.get("bf16", False)),
-        fp16=bool(config.get("fp16", False)),
-        report_to=config.get("report_to", "none"),
-        eval_strategy="steps" if validation_records else "no",
-        save_steps=int(config.get("save_steps", 250)),
-        logging_steps=int(config.get("logging_steps", 10)),
-        seed=seed,
+    tokenizer = AutoTokenizer.from_pretrained(args.sft_adapter)
+    if tokenizer.pad_token is None:
+        tokenizer.pad_token = tokenizer.eos_token
+    dataset = load_dataset(
+        "json",
+        data_files=str(args.data_dir / preference["shard"]["path"]),
+        split="train",
+    )
+    config = DPOConfig(
+        output_dir=str(args.output_dir),
+        num_train_epochs=args.epochs,
+        per_device_train_batch_size=args.batch_size,
+        per_device_eval_batch_size=args.batch_size,
+        gradient_accumulation_steps=args.gradient_accumulation,
+        learning_rate=args.learning_rate,
+        beta=args.beta,
+        warmup_ratio=0.05,
+        lr_scheduler_type="cosine",
+        logging_steps=10,
+        save_strategy="steps",
+        save_steps=100,
+        save_total_limit=2,
+        bf16=use_bf16,
+        fp16=not use_bf16,
+        tf32=True,
+        gradient_checkpointing=True,
+        max_length=args.max_length,
+        report_to="none",
+        seed=args.seed,
+        data_seed=args.seed,
+        full_determinism=True,
     )
     trainer = DPOTrainer(
         model=model,
-        ref_model=None,
-        args=arguments,
+        args=config,
+        train_dataset=dataset,
         processing_class=tokenizer,
-        train_dataset=train_dataset,
-        eval_dataset=eval_dataset if validation_records else None,
     )
-    trainer.train(resume_from_checkpoint=config.get("resume_from_checkpoint"))
-    trainer.save_model(str(config["output_dir"]))
-    tokenizer.save_pretrained(str(config["output_dir"]))
-    save_run_metadata(config["output_dir"], config, {"train_records": len(train_records), "validation_records": len(validation_records)})
-
-
-def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--config", required=True)
-    args = parser.parse_args(argv)
-    train(args.config)
-    return 0
+    result = trainer.train(resume_from_checkpoint=args.resume_from_checkpoint)
+    trainer.save_model()
+    tokenizer.save_pretrained(args.output_dir)
+    run = {
+        "schema_version": "nova.dpo-run.v1",
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "sft_adapter": str(args.sft_adapter),
+        "preference_manifest_sha256": preference["manifest_sha256"],
+        "pairs": preference["pairs"],
+        "seed": args.seed,
+        "metrics": result.metrics,
+        "versions": {
+            "python": platform.python_version(),
+            "torch": torch.__version__,
+            "transformers": transformers.__version__,
+            "trl": trl.__version__,
+        },
+    }
+    run["run_sha256"] = sha256_text(canonical_json(run))
+    (args.output_dir / "nova_dpo_run.json").write_text(
+        json.dumps(run, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    main()

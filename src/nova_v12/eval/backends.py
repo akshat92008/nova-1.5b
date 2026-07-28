@@ -31,7 +31,9 @@ class OllamaBackend:
 
     def __init__(self, model: str, base_url: str | None = None) -> None:
         self.model = model
-        self.base_url = (base_url or os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434")).rstrip("/")
+        self.base_url = (base_url or os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434")).rstrip(
+            "/"
+        )
 
     def generate(self, prompt: str, *, max_tokens: int, temperature: float) -> BackendOutput:
         payload = {
@@ -51,14 +53,20 @@ class OllamaBackend:
         latency = time.perf_counter() - started
         tokens = int(body.get("eval_count", 0))
         duration_ns = int(body.get("eval_duration", 0))
-        tps = tokens / (duration_ns / 1e9) if duration_ns > 0 else (tokens / latency if latency else 0.0)
+        tps = (
+            tokens / (duration_ns / 1e9)
+            if duration_ns > 0
+            else (tokens / latency if latency else 0.0)
+        )
         return BackendOutput(body.get("response", ""), latency, tokens, tps, body.get("model"))
 
 
 class TransformersBackend:
     name = "transformers"
 
-    def __init__(self, model_id: str, *, trust_remote_code: bool = False, revision: str | None = None) -> None:
+    def __init__(
+        self, model_id: str, *, trust_remote_code: bool = False, revision: str | None = None
+    ) -> None:
         self.model_id = model_id
         self.trust_remote_code = trust_remote_code
         self.revision = revision
@@ -144,11 +152,7 @@ class TransformersBackend:
             for prefix_token, suffix_token, middle_token in candidates:
                 if all(token in vocabulary for token in (prefix_token, suffix_token, middle_token)):
                     formatted = (
-                        prefix_token
-                        + task.prefix
-                        + suffix_token
-                        + task.suffix
-                        + middle_token
+                        prefix_token + task.prefix + suffix_token + task.suffix + middle_token
                     )
                     return self._generate_formatted(
                         formatted, max_tokens=max_tokens, temperature=temperature

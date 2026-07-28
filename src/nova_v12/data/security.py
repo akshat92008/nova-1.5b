@@ -41,4 +41,6 @@ def scan_sensitive_text(text: str, *, flag_pii: bool = True) -> list[SecurityFin
 
 def _looks_like_example_email(line: str) -> bool:
     lowered = line.lower()
-    return any(domain in lowered for domain in ("example.com", "example.org", "test.com", "localhost"))
+    return any(
+        domain in lowered for domain in ("example.com", "example.org", "test.com", "localhost")
+    )

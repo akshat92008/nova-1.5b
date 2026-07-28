@@ -623,6 +623,11 @@ class TaskGuardrail:
         actual_file_count = self.count_file_declarations(nova_output)
 
         if is_degenerate or (thinking_mentions_files and actual_file_count == 0):
+            files_state = (
+                f'degenerate ("{files_content[:30]}")'
+                if is_degenerate
+                else "empty (0 filepath declarations)"
+            )
             reroute_count = self._increment_reroute(task_id)
             if reroute_count > self.max_reroutes:
                 return GuardrailVerdict(
@@ -636,8 +641,8 @@ class TaskGuardrail:
                 scope_level=scope_level, expected_files=expected_files,
                 actual_files=actual_file_count,
                 reason=f"<<THINKING>> plans file creation but <<FILES>> is "
-                       f"{'degenerate ("' + files_content[:30] + '")' if is_degenerate else 'empty (0 filepath declarations)'}. "
-                       f"Internal contradiction — model reasoned correctly but failed to emit output.",
+                       f"{files_state}. Internal contradiction — model reasoned correctly "
+                       "but failed to emit output.",
                 reroute_count=reroute_count,
             )
 

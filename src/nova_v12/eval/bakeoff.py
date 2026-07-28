@@ -61,10 +61,7 @@ def run_bakeoff(
         )
         combined[candidate_id] = summary.get(candidate_id, {})
     leaderboard = sorted(
-        (
-            {"candidate": candidate_id, **metrics}
-            for candidate_id, metrics in combined.items()
-        ),
+        ({"candidate": candidate_id, **metrics} for candidate_id, metrics in combined.items()),
         key=lambda item: float(item.get("overall", 0.0)),
         reverse=True,
     )

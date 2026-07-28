@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+
 try:
     import resource
 except ImportError:  # Windows
@@ -81,6 +82,7 @@ class SandboxRunner:
         executable = shutil.which(command[0])
         if executable is None and command[0] == "python":
             import sys
+
             executable = shutil.which("python3") or sys.executable
         if executable is None:
             return CommandResult(command, 127, "", f"executable not found: {command[0]}", 0.0)
@@ -150,11 +152,15 @@ class SandboxRunner:
                 timed_out=True,
             )
 
-    def verify(self, root: Path, tests: Iterable[CommandSpec], changed_files: list[str]) -> VerificationResult:
+    def verify(
+        self, root: Path, tests: Iterable[CommandSpec], changed_files: list[str]
+    ) -> VerificationResult:
         results: list[CommandResult] = []
         for test in tests:
             result = self.run(root, test)
             results.append(result)
             if result.exit_code != test.expected_exit_code:
-                return VerificationResult(False, results, changed_files, "verification command failed")
+                return VerificationResult(
+                    False, results, changed_files, "verification command failed"
+                )
         return VerificationResult(True, results, changed_files)

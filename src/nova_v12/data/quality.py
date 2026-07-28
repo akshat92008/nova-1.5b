@@ -9,7 +9,6 @@ import tempfile
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
-
 _GENERATED_MARKERS = (
     "generated file",
     "do not edit",
@@ -69,7 +68,15 @@ def score_code(content: str, language: str, *, min_score: float = 0.70) -> Quali
         + 0.10 * float(not minified and not generated)
     )
     accepted = score >= min_score and syntax_valid and not generated and not minified
-    return QualityReport(accepted, round(score, 4), syntax_valid, generated, minified, meaningful_identifiers, reasons)
+    return QualityReport(
+        accepted,
+        round(score, 4),
+        syntax_valid,
+        generated,
+        minified,
+        meaningful_identifiers,
+        reasons,
+    )
 
 
 def _syntax_valid(content: str, language: str) -> bool:
@@ -83,7 +90,11 @@ def _syntax_valid(content: str, language: str) -> bool:
     try:
         from tree_sitter_language_pack import get_parser
 
-        parser = get_parser({"javascript": "javascript", "typescript": "typescript", "cpp": "cpp"}.get(language, language))
+        parser = get_parser(
+            {"javascript": "javascript", "typescript": "typescript", "cpp": "cpp"}.get(
+                language, language
+            )
+        )
         tree = parser.parse(content.encode("utf-8"))
         return not tree.root_node.has_error
     except Exception:
@@ -109,5 +120,7 @@ def _compiler_parse(content: str, language: str) -> bool:
         file = Path(tmp) / f"source{suffix}"
         file.write_text(content, encoding="utf-8")
         command = [part.format(file=str(file), out=str(Path(tmp) / "out")) for part in template]
-        proc = subprocess.run(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=15, check=False)
+        proc = subprocess.run(
+            command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=15, check=False
+        )
         return proc.returncode == 0

@@ -5,7 +5,7 @@ import random
 from pathlib import Path
 from typing import Any
 
-from nova_v12.data.fim import FIMRecord, format_native_fim, generate_fim_records
+from nova_v12.data.fim import format_native_fim, generate_fim_records
 from nova_v12.training.common import (
     apply_lora,
     dtype_from_config,
@@ -55,7 +55,11 @@ def train(config_path: str | Path) -> None:
     set_seed(seed)
     base_model = str(config["base_model"])
     revision = config.get("revision")
-    tokenizer = AutoTokenizer.from_pretrained(base_model, revision=revision, trust_remote_code=bool(config.get("trust_remote_code", False)))
+    tokenizer = AutoTokenizer.from_pretrained(
+        base_model,
+        revision=revision,
+        trust_remote_code=bool(config.get("trust_remote_code", False)),
+    )
     if tokenizer.pad_token_id is None:
         tokenizer.pad_token = tokenizer.eos_token
     model = AutoModelForCausalLM.from_pretrained(
@@ -73,10 +77,14 @@ def train(config_path: str | Path) -> None:
     max_length = int(config.get("max_length", 4096))
     streaming = bool(config.get("streaming", False))
     validation_records = load_records(config.get("validation_files", []))
-    validation_texts = [_text_for_record(item, fim_rate=fim_rate, rng=rng) for item in validation_records]
+    validation_texts = [
+        _text_for_record(item, fim_rate=fim_rate, rng=rng) for item in validation_records
+    ]
 
     def tokenise(batch: dict[str, list[str]]) -> dict[str, Any]:
-        return tokenizer(batch["text"], truncation=True, max_length=max_length, add_special_tokens=True)
+        return tokenizer(
+            batch["text"], truncation=True, max_length=max_length, add_special_tokens=True
+        )
 
     if streaming:
         from nova_v12.training.streaming import PackedJSONLIterableDataset, as_torch_dataset

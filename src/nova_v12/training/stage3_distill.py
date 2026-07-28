@@ -48,7 +48,10 @@ def build_distillation_data(
                     {"role": "user", "content": prompt},
                     {"role": "assistant", "content": chosen.raw_output},
                 ],
-                "provenance": {"source": "execution-ranked-distillation", "candidate": chosen.candidate_id},
+                "provenance": {
+                    "source": "execution-ranked-distillation",
+                    "candidate": chosen.candidate_id,
+                },
                 "verification": {"passed": True, "score": chosen_score, "details": chosen_evidence},
             }
         )
@@ -61,9 +64,19 @@ def build_distillation_data(
                         "prompt": prompt,
                         "chosen": chosen.raw_output,
                         "rejected": rejected.raw_output,
-                        "chosen_evidence": {"passed": True, "score": chosen_score, "details": chosen_evidence},
-                        "rejected_evidence": {"passed": rejected_score >= minimum_score, "score": rejected_score, "details": rejected_evidence},
-                        "repository_snapshot": str(task.get("metadata", {}).get("repository_snapshot", task_id)),
+                        "chosen_evidence": {
+                            "passed": True,
+                            "score": chosen_score,
+                            "details": chosen_evidence,
+                        },
+                        "rejected_evidence": {
+                            "passed": rejected_score >= minimum_score,
+                            "score": rejected_score,
+                            "details": rejected_evidence,
+                        },
+                        "repository_snapshot": str(
+                            task.get("metadata", {}).get("repository_snapshot", task_id)
+                        ),
                     }
                 )
     write_jsonl(sft_output, sft)

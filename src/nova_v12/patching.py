@@ -77,6 +77,13 @@ def extract_json_object(output: str) -> dict[str, Any]:
     raise ValueError("no valid JSON object found")
 
 
+def _copy_workspace(source: Path, destination: Path) -> None:
+    for candidate in source.rglob("*"):
+        if candidate.is_symlink():
+            raise ValueError(f"workspace symlinks are forbidden: {candidate.relative_to(source)}")
+    shutil.copytree(source, destination, dirs_exist_ok=True, symlinks=True)
+
+
 def apply_operations(
     root: Path,
     operations: list[dict[str, Any]],
@@ -91,7 +98,10 @@ def apply_operations(
     changed: list[str] = []
     with tempfile.TemporaryDirectory(prefix="nova-patch-") as tmp:
         stage = Path(tmp) / "workspace"
-        shutil.copytree(root, stage, dirs_exist_ok=True)
+        try:
+            _copy_workspace(root, stage)
+        except ValueError as exc:
+            return PatchApplication(False, [], str(exc))
         try:
             for operation in operations:
                 action = str(operation.get("action", "")).lower()
@@ -116,7 +126,8 @@ def apply_operations(
                     count = original.count(search)
                     if not search or count != expected_count:
                         raise ValueError(
-                            f"search count mismatch for {relative}: expected {expected_count}, got {count}"
+                            f"search count mismatch for {relative}: "
+                            f"expected {expected_count}, got {count}"
                         )
                     target.write_text(
                         original.replace(search, replacement, expected_count), encoding="utf-8"
@@ -158,7 +169,10 @@ def apply_unified_diff(root: Path, diff_text: str) -> PatchApplication:
         return PatchApplication(False, [], "git executable not found")
     with tempfile.TemporaryDirectory(prefix="nova-diff-") as tmp:
         stage = Path(tmp) / "workspace"
-        shutil.copytree(root, stage, dirs_exist_ok=True)
+        try:
+            _copy_workspace(root, stage)
+        except ValueError as exc:
+            return PatchApplication(False, [], str(exc))
         proc = subprocess.run(
             ["git", "apply", "--whitespace=nowarn", "-"],
             input=diff_text,

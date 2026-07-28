@@ -13,7 +13,11 @@ def code_task():
         "files": [
             {
                 "path": "check.py",
-                "content": "from solution import add_one\nassert add_one(1) == 2\nassert add_one(-1) == 0\n",
+                "content": (
+                    "from solution import add_one\n"
+                    "assert add_one(1) == 2\n"
+                    "assert add_one(-1) == 0\n"
+                ),
             }
         ],
         "tests": [{"command": ["python", "check.py"], "timeout_seconds": 5}],
@@ -32,7 +36,11 @@ def test_wrong_code_is_not_full_score():
 
 def test_correct_code_passes():
     result = GenerationResult(
-        "good", "add-one", "code_generation", "def add_one(value):\n    return value + 1", task=code_task()
+        "good",
+        "add-one",
+        "code_generation",
+        "def add_one(value):\n    return value + 1",
+        task=code_task(),
     )
     score = score_result(result)
     assert score.score == 1.0

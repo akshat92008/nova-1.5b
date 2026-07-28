@@ -25,7 +25,11 @@ def test_data_pipeline_filters_and_writes_manifest(tmp_path):
                 "path": "src/math_utils.py",
                 "licence": "MIT",
                 "language": "python",
-                "content": '"""Useful helpers."""\n\ndef add_values(left, right):\n    return left + right\n',
+                "content": (
+                    '"""Useful helpers."""\n\n'
+                    "def add_values(left, right):\n"
+                    "    return left + right\n"
+                ),
             }
         )
         + "\n"

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 from pathlib import Path
 from typing import Any
 
@@ -22,8 +21,9 @@ class ToolEnvironment:
     @property
     def tool_description(self) -> str:
         return (
-            "Available tools: list_files, read_file, search_code, apply_operations, run_tests, finish. "
-            "Return exactly one JSON object: {\"tool\": \"name\", \"args\": {...}}."
+            "Available tools: list_files, read_file, search_code, "
+            "apply_operations, run_tests, finish. "
+            'Return exactly one JSON object: {"tool": "name", "args": {...}}.'
         )
 
     def execute(self, raw_output: str) -> dict[str, Any]:
@@ -38,7 +38,11 @@ class ToolEnvironment:
             directory = safe_resolve(self.root, relative)
             if not directory.is_dir():
                 return {"ok": False, "error": "directory not found"}
-            values = [str(path.relative_to(self.root)) for path in sorted(directory.rglob("*")) if path.is_file()]
+            values = [
+                str(path.relative_to(self.root))
+                for path in sorted(directory.rglob("*"))
+                if path.is_file()
+            ]
             return {"ok": True, "files": values[:500]}
         if tool == "read_file":
             path = safe_resolve(self.root, str(args.get("path", "")))
@@ -58,7 +62,9 @@ class ToolEnvironment:
                     continue
                 for index, line in enumerate(text.splitlines(), 1):
                     if query in line:
-                        matches.append({"path": str(file.relative_to(self.root)), "line": index, "text": line})
+                        matches.append(
+                            {"path": str(file.relative_to(self.root)), "line": index, "text": line}
+                        )
                         if len(matches) >= 100:
                             return {"ok": True, "matches": matches}
             return {"ok": True, "matches": matches}

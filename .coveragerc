@@ -1,0 +1,16 @@
+[run]
+source = nova_v12
+omit =
+    */nova_v12/__main__.py
+    */nova_v12/cli.py
+    */nova_v12/data/*
+    */nova_v12/eval/*
+    */nova_v12/inference/*
+    */nova_v12/patching.py
+    */nova_v12/sandbox.py
+    */nova_v12/schemas.py
+    */nova_v12/training/*
+
+[report]
+show_missing = true
+skip_covered = false

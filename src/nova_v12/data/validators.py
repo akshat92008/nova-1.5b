@@ -3,7 +3,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-
 VALID_MODES = {"code", "fim", "edit", "debug", "agent", "review", "explain", "refactor"}
 EXECUTION_REQUIRED_MODES = {"edit", "debug", "agent"}
 
@@ -28,7 +27,11 @@ def validate_sft_record(record: dict[str, Any]) -> ValidationReport:
         roles = [item.get("role") for item in messages if isinstance(item, dict)]
         if "user" not in roles or not roles or roles[-1] != "assistant":
             errors.append("messages must contain a user turn and end with assistant")
-        if any(not isinstance(item.get("content"), str) or not item.get("content", "").strip() for item in messages if isinstance(item, dict)):
+        if any(
+            not isinstance(item.get("content"), str) or not item.get("content", "").strip()
+            for item in messages
+            if isinstance(item, dict)
+        ):
             errors.append("all messages require non-empty text content")
     if not isinstance(record.get("provenance"), dict):
         errors.append("provenance object is required")

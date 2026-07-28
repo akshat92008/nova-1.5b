@@ -15,13 +15,18 @@ def _record_text(record: dict[str, Any], fim_rate: float, seed: int) -> str:
     content = str(record.get("content", ""))
     if not content:
         return ""
-    stable = int(hashlib.sha256((str(record.get("content_hash", "")) + str(seed)).encode()).hexdigest()[:16], 16)
+    stable = int(
+        hashlib.sha256((str(record.get("content_hash", "")) + str(seed)).encode()).hexdigest()[:16],
+        16,
+    )
     rng = random.Random(stable)
     if rng.random() < fim_rate:
         records = generate_fim_records(
             content,
             language=str(record.get("language", "text")),
-            source_hash=str(record.get("content_hash", hashlib.sha256(content.encode()).hexdigest())),
+            source_hash=str(
+                record.get("content_hash", hashlib.sha256(content.encode()).hexdigest())
+            ),
             count=1,
             seed=stable,
         )

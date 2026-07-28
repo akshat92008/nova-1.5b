@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 from nova_v12.patching import apply_operations
 from nova_v12.sandbox import SandboxRunner
@@ -21,7 +21,9 @@ class MutationVerification:
         return asdict(self)
 
 
-def verify_mutation_record(value: dict[str, Any], runner: SandboxRunner | None = None) -> MutationVerification:
+def verify_mutation_record(
+    value: dict[str, Any], runner: SandboxRunner | None = None
+) -> MutationVerification:
     runner = runner or SandboxRunner(timeout_seconds=60)
     record_id = str(value.get("id", "mutation"))
     try:
@@ -42,7 +44,11 @@ def verify_mutation_record(value: dict[str, Any], runner: SandboxRunner | None =
             baseline = runner.verify(root, tests, [])
             if not baseline.passed:
                 return MutationVerification(
-                    record_id, False, "baseline tests do not pass", None, {"baseline": baseline.to_dict()}
+                    record_id,
+                    False,
+                    "baseline tests do not pass",
+                    None,
+                    {"baseline": baseline.to_dict()},
                 )
             mutated = apply_operations(root, [operation])
             if not mutated.ok:
@@ -93,20 +99,25 @@ def verify_mutation_record(value: dict[str, Any], runner: SandboxRunner | None =
                 )
             buggy_files = []
             for file in files:
-                path = root / file.path
                 # The workspace is restored now, so reconstruct the buggy content exactly.
                 content = file.content
                 if file.path == operation["path"]:
-                    content = content.replace(search, replacement, int(operation.get("expected_count", 1)))
+                    content = content.replace(
+                        search, replacement, int(operation.get("expected_count", 1))
+                    )
                 buggy_files.append({"path": file.path, "content": content})
-            task = str(value.get("task") or "Repair the failing repository and return a minimal patch.")
+            task = str(
+                value.get("task") or "Repair the failing repository and return a minimal patch."
+            )
             training = {
                 "id": record_id,
                 "mode": "debug",
                 "messages": [
                     {
                         "role": "user",
-                        "content": task + "\n\n" + "\n\n".join(
+                        "content": task
+                        + "\n\n"
+                        + "\n\n".join(
                             f"FILE: {item['path']}\n{item['content']}" for item in buggy_files
                         ),
                     },

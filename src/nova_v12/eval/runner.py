@@ -2,13 +2,12 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Iterable
 
 from nova_v12.eval.backends import GenerationBackend
 from nova_v12.eval.tasks import load_tasks
 from nova_v12.eval.tool_env import ToolEnvironment
-from nova_v12.schemas import EvalTask, GenerationResult, write_jsonl
 from nova_v12.sandbox import SandboxRunner
+from nova_v12.schemas import EvalTask, GenerationResult, write_jsonl
 
 
 def format_prompt(task: EvalTask) -> str:

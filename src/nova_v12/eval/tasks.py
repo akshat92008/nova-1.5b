@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Iterable
 
 from nova_v12.schemas import EvalTask, load_jsonl
 
@@ -28,7 +27,10 @@ def validate_tasks(path: str | Path) -> tuple[int, list[str]]:
     except Exception as exc:
         return 0, [str(exc)]
     for task in tasks:
-        if task.category in {"code_generation", "debugging", "repository_editing", "fim"} and not task.tests:
+        if (
+            task.category in {"code_generation", "debugging", "repository_editing", "fim"}
+            and not task.tests
+        ):
             errors.append(f"{task.id}: executable category has no tests")
         if task.category == "fim" and not (task.prefix or task.suffix):
             errors.append(f"{task.id}: FIM task requires prefix or suffix")

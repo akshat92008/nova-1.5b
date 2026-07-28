@@ -9,6 +9,9 @@ def reward_from_score(score: TaskScore) -> float:
         return -1.0
     reward = 2.0 * score.score - 1.0
     for check in score.checks:
-        if check.name in {"authorised_files_only", "patch_applies", "tests_pass"} and not check.passed:
+        if (
+            check.name in {"authorised_files_only", "patch_applies", "tests_pass"}
+            and not check.passed
+        ):
             reward -= 0.25
     return max(-1.0, min(1.0, reward))

@@ -18,6 +18,8 @@ def test_contamination_scans_nested_fields(tmp_path):
     path = tmp_path / "signatures.json"
     path.write_text(json.dumps(signatures))
     scanner = ContaminationScanner.from_file(path)
-    findings = scanner.scan({"messages": [{"role": "user", "content": "Use def secret_eval(value):"}]})
+    findings = scanner.scan(
+        {"messages": [{"role": "user", "content": "Use def secret_eval(value):"}]}
+    )
     assert findings
     assert findings[0].field.endswith(".content")

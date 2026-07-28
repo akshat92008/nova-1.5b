@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import json
 from collections import Counter
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Iterable, Iterator
+from typing import Any, Iterator
 
 import yaml
 
@@ -77,7 +77,10 @@ def build_data(config_path: str | Path) -> dict[str, Any]:
     stats = BuildStats()
     mode = "a" if resume else "w"
 
-    with SQLiteExactDeduplicator(dedup_path) as exact, output_path.open(mode, encoding="utf-8") as handle:
+    with (
+        SQLiteExactDeduplicator(dedup_path) as exact,
+        output_path.open(mode, encoding="utf-8") as handle,
+    ):
         for record in _iter_records(input_cfg):
             stats.seen += 1
             reason = _reject_reason(
@@ -101,7 +104,9 @@ def build_data(config_path: str | Path) -> dict[str, Any]:
                 break
             payload = record.to_dict()
             payload["token_count"] = token_count
-            payload["quality"] = score_code(record.content, record.language, min_score=min_quality).to_dict()
+            payload["quality"] = score_code(
+                record.content, record.language, min_score=min_quality
+            ).to_dict()
             handle.write(json.dumps(payload, ensure_ascii=False, sort_keys=True) + "\n")
             stats.accepted += 1
             stats.tokens += token_count
@@ -184,4 +189,6 @@ def _load_tokenizer(config: Any):
         from transformers import AutoTokenizer
     except ImportError as exc:
         raise RuntimeError("transformers is required for exact token counts") from exc
-    return AutoTokenizer.from_pretrained(model_id, revision=None if isinstance(config, str) else config.get("revision"))
+    return AutoTokenizer.from_pretrained(
+        model_id, revision=None if isinstance(config, str) else config.get("revision")
+    )

@@ -63,7 +63,9 @@ class ContaminationScanner:
                     method = "substring"
                 if method:
                     position = normalised.find(signature["text"])
-                    excerpt = normalised[max(0, position - 80) : position + len(signature["text"]) + 80]
+                    excerpt = normalised[
+                        max(0, position - 80) : position + len(signature["text"]) + 80
+                    ]
                     findings.append(
                         ContaminationFinding(
                             signature["benchmark"], signature["id"], field, method, excerpt

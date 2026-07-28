@@ -9,8 +9,8 @@ from typing import Any
 
 from nova_v12.inference.protocol import parse_patch_response
 from nova_v12.patching import apply_operations, apply_unified_diff, extract_code
-from nova_v12.schemas import CheckResult, EvalTask, GenerationResult, TaskScore, load_jsonl
 from nova_v12.sandbox import SandboxRunner
+from nova_v12.schemas import CheckResult, EvalTask, GenerationResult, TaskScore, load_jsonl
 
 
 def _weighted(checks: list[CheckResult]) -> float:
@@ -19,24 +19,36 @@ def _weighted(checks: list[CheckResult]) -> float:
 
 
 def _output_path(task: EvalTask) -> str:
-    return str(task.metadata.get("output_path") or {
-        "python": "solution.py",
-        "javascript": "solution.js",
-        "typescript": "solution.ts",
-        "go": "solution.go",
-        "rust": "src/lib.rs",
-        "java": "Solution.java",
-        "cpp": "solution.cpp",
-        "c++": "solution.cpp",
-    }.get(task.language, "solution.txt"))
+    return str(
+        task.metadata.get("output_path")
+        or {
+            "python": "solution.py",
+            "javascript": "solution.js",
+            "typescript": "solution.ts",
+            "go": "solution.go",
+            "rust": "src/lib.rs",
+            "java": "Solution.java",
+            "cpp": "solution.cpp",
+            "c++": "solution.cpp",
+        }.get(task.language, "solution.txt")
+    )
 
 
 def score_result(result: GenerationResult, runner: SandboxRunner | None = None) -> TaskScore:
     runner = runner or SandboxRunner()
     if result.error:
-        return TaskScore(result.candidate_id, result.task_id, result.category, 0.0, [], error=result.error)
+        return TaskScore(
+            result.candidate_id, result.task_id, result.category, 0.0, [], error=result.error
+        )
     if not result.task:
-        return TaskScore(result.candidate_id, result.task_id, result.category, 0.0, [], error="task payload missing")
+        return TaskScore(
+            result.candidate_id,
+            result.task_id,
+            result.category,
+            0.0,
+            [],
+            error="task payload missing",
+        )
     task = EvalTask.from_dict(result.task)
     try:
         if task.category == "instruction_following":
@@ -73,14 +85,20 @@ def _score_executable(result: GenerationResult, task: EvalTask, runner: SandboxR
             try:
                 manifest = parse_patch_response(result.raw_output)
                 if manifest.get("status") != "patch":
-                    checks.append(CheckResult("patch_status", False, 0.2, str(manifest.get("status"))))
-                    return TaskScore(result.candidate_id, task.id, task.category, _weighted(checks), checks)
+                    checks.append(
+                        CheckResult("patch_status", False, 0.2, str(manifest.get("status")))
+                    )
+                    return TaskScore(
+                        result.candidate_id, task.id, task.category, _weighted(checks), checks
+                    )
                 applied = apply_operations(root, manifest["operations"])
             except Exception:
                 applied = apply_unified_diff(root, extract_code(result.raw_output))
             checks.append(CheckResult("patch_applies", applied.ok, 0.25, applied.error))
             if not applied.ok:
-                return TaskScore(result.candidate_id, task.id, task.category, _weighted(checks), checks)
+                return TaskScore(
+                    result.candidate_id, task.id, task.category, _weighted(checks), checks
+                )
             changed = applied.changed_files
             if task.expected_files_modified:
                 allowed = set(task.expected_files_modified)
@@ -116,14 +134,18 @@ def _score_executable(result: GenerationResult, task: EvalTask, runner: SandboxR
         temp.cleanup()
 
 
-def _score_instruction(result: GenerationResult, task: EvalTask, runner: SandboxRunner) -> TaskScore:
+def _score_instruction(
+    result: GenerationResult, task: EvalTask, runner: SandboxRunner
+) -> TaskScore:
     checks: list[CheckResult] = []
     text = result.raw_output.strip()
     for constraint in task.constraints:
         passed = _evaluate_constraint(text, constraint.kind, constraint.value)
         if constraint.negate:
             passed = not passed
-        checks.append(CheckResult(f"constraint:{constraint.kind}", passed, 1.0, repr(constraint.value)))
+        checks.append(
+            CheckResult(f"constraint:{constraint.kind}", passed, 1.0, repr(constraint.value))
+        )
     execution: dict[str, Any] = {}
     if task.tests:
         temp, root = runner.make_workspace(task.files)
@@ -137,7 +159,9 @@ def _score_instruction(result: GenerationResult, task: EvalTask, runner: Sandbox
             execution = verified.to_dict()
         finally:
             temp.cleanup()
-    return TaskScore(result.candidate_id, task.id, task.category, _weighted(checks), checks, execution)
+    return TaskScore(
+        result.candidate_id, task.id, task.category, _weighted(checks), checks, execution
+    )
 
 
 def _evaluate_constraint(text: str, kind: str, value: Any) -> bool:

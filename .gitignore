@@ -50,9 +50,15 @@ models/
 
 # Log files and temporary runs
 *.log
+.coverage
+.coverage.*
+htmlcov/
+.pytest_cache/
+.ruff_cache/
 run_out.txt
 tmp_files/
 nova3b-output/
+runs/
 temp_bench_results/
 
 # OS and IDE files
@@ -73,4 +79,3 @@ coding_agent/.git
 # Databases & Runtime state
 *.db
 .nexusai/
-

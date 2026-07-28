@@ -3,7 +3,6 @@ from __future__ import annotations
 import ast
 import random
 from dataclasses import asdict, dataclass
-from typing import Iterable
 
 
 @dataclass(slots=True)

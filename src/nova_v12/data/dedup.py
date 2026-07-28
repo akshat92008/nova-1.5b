@@ -21,12 +21,16 @@ class SQLiteExactDeduplicator:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self.connection = sqlite3.connect(self.path)
         self.connection.execute(
-            "CREATE TABLE IF NOT EXISTS hashes (digest TEXT PRIMARY KEY, source_id TEXT, created_at TEXT DEFAULT CURRENT_TIMESTAMP)"
+            "CREATE TABLE IF NOT EXISTS hashes "
+            "(digest TEXT PRIMARY KEY, source_id TEXT, "
+            "created_at TEXT DEFAULT CURRENT_TIMESTAMP)"
         )
         self.connection.commit()
 
     def add(self, text: str, source_id: str = "") -> bool:
-        digest = hashlib.sha256(normalise_for_dedup(text).encode("utf-8", errors="replace")).hexdigest()
+        digest = hashlib.sha256(
+            normalise_for_dedup(text).encode("utf-8", errors="replace")
+        ).hexdigest()
         try:
             self.connection.execute(
                 "INSERT INTO hashes(digest, source_id) VALUES (?, ?)", (digest, source_id)
